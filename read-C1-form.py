@@ -368,9 +368,11 @@ def find_markers(image, min_side, max_side):
 def scan_boxes(boxes, boxes_window_bw):
     count_str = ''
     confidence = True
+    boxes28 = []
     for box in boxes:
         window = boxes_window_bw[box[1]:box[1]+box[3], box[0]:box[0]+box[2]]        
         window = read_box(window)
+        boxes28.append(window)
         if window.sum() < 10:
             char = '0'
             count_str += '0'
@@ -397,7 +399,7 @@ def scan_boxes(boxes, boxes_window_bw):
     elif count_str[1] == 'X':
         count_str = 'X' + count_str[1:]
 
-    return count_str, confidence
+    return count_str, confidence, boxes28
 
 def scan_form(img_file, img_file_out):
     # ### Load Formulir-C1 Scanned Images
@@ -422,12 +424,10 @@ def scan_form(img_file, img_file_out):
     min_w = round(form_width*0.04)
     min_h = round(form_height*0.05)
     
-    # Candidate #01
     win01 = window[:window.shape[0]//2,:]
     boxes01 = get_vote_box(win01, (pivot_x,pivot_y), (min_w,min_h))
     if not all(boxes01): raise Exception("Unable to read form: %s" % img_file)
 
-    # Candidate #02
     win02 = window[window.shape[0]//2:,:]
     boxes02 = get_vote_box(win02, (pivot_x,pivot_y+window.shape[0]//2),(min_w,min_h))
     if not all(boxes02): raise Exception("Unable to read form: %s" % img_file)
@@ -459,12 +459,11 @@ def scan_form(img_file, img_file_out):
     clone_grayed = cv2.cvtColor(clone, cv2.COLOR_RGB2GRAY)
     (thresh, clone_bw) = cv2.threshold(clone_grayed, 215, 255, cv2.THRESH_BINARY)
 
-
-    suara01, confidence['votes01'] = scan_boxes(boxes01, clone_bw)
-    suara02, confidence['votes02']= scan_boxes(boxes02, clone_bw)
-    suara_sah,confidence['valid_ballots'] = scan_boxes(boxes_valid, clone_bw)
-    suara_tidak_sah,confidence['invalid_ballots']  = scan_boxes(boxes_invalid, clone_bw)
-    total_suara,confidence['total_ballots'] = scan_boxes(boxes_total, clone_bw)
+    suara01, confidence['votes01'], digits_01 = scan_boxes(boxes01, clone_bw)
+    suara02, confidence['votes02'], digits_02 = scan_boxes(boxes02, clone_bw)
+    suara_sah,confidence['valid_ballots'], digits_valid = scan_boxes(boxes_valid, clone_bw)
+    suara_tidak_sah,confidence['invalid_ballots'], digits_invalid  = scan_boxes(boxes_invalid, clone_bw)
+    total_suara,confidence['total_ballots'], digits_total = scan_boxes(boxes_total, clone_bw)
 
     # ## Validation and correction
     try:
@@ -477,21 +476,11 @@ def scan_form(img_file, img_file_out):
         raise Exception("Unable to read form: %s" % img_file)
 
     if nb_valid == votes01 + votes02:
-        validity['votes01'] = True
-        validity['votes02'] = True
-        validity['valid_ballots'] = True
-
+        validity['votes01'] = validity['votes02'] = validity['valid_ballots'] = True
     if nb_total == nb_invalid + nb_valid:
-        validity['valid_ballots'] = True
-        validity['invalid_ballots'] = True
-        validity['total_ballots'] = True
-
+        validity['valid_ballots'] = validity['invalid_ballots'] = validity['total_ballots'] = True
     if nb_total == votes01 + votes02 - nb_invalid:
-        validity['votes01'] = True
-        validity['votes02'] = True
-        validity['invalid_ballots'] = True
-        validity['total_ballots'] = True        
-
+        validity['votes01'] = validity['votes02'] = validity['invalid_ballots'] = validity['total_ballots'] = True
     valid_conf = {x:validity[x] or confidence[x] for x in validity}
 
     if not valid_conf['votes01'] and valid_conf['votes02'] and valid_conf['valid_ballots']:
@@ -516,46 +505,31 @@ def scan_form(img_file, img_file_out):
             nb_total = nb_valid + nb_invalid
             valid_conf['total_ballots'] = True
 
+    # ### Draw CNN 28x28 digits
+    digit_box = [(digits_01,boxes01),(digits_02,boxes02),(digits_valid,boxes_valid),(digits_invalid,boxes_invalid),(digits_total,boxes_total)]
+    for digits, boxes in digit_box:
+        width = boxes[2][0]+boxes[2][2] - boxes[0][0]
+        for j, box in enumerate(boxes):
+            s_img = digits[j]
+            x_offset=box[0] - width
+            y_offset=box[1]-45
+            clone_grayed[y_offset:y_offset+s_img.shape[0], x_offset:x_offset+s_img.shape[1]] = s_img
+
+    # convert back to RGB
+    clone = cv2.cvtColor(clone_grayed,cv2.COLOR_GRAY2RGB)
+
     # ### Draw boxes
     for box in (boxes01+boxes02+boxes_valid+boxes_invalid+boxes_total):
         _ = cv2.rectangle(clone, (box[0], box[1]), (box[0] + box[2], box[1] + box[3]), (0,255,0), 2)
 
     # ## Draw numbers
-
-    # Votes 01
-    count_str = str(votes01).zfill(3)
-    for j, box in enumerate(boxes01):
-        char = count_str[j]
-        _ = cv2.rectangle(clone, (box[0],box[1]-45), (box[0]+30,box[1]-5), (255, 0, 0), -1) 
-        _ = cv2.putText(clone,char,(box[0],box[1]-10), cv2.FONT_HERSHEY_PLAIN,3,(0,0,255),2)
-
-    # Votes 02
-    count_str = str(votes02).zfill(3)
-    for j, box in enumerate(boxes02):
-        char = count_str[j]
-        _ = cv2.rectangle(clone, (box[0],box[1]-45), (box[0]+30,box[1]-5), (255, 0, 0), -1) 
-        _ = cv2.putText(clone,char,(box[0],box[1]-10), cv2.FONT_HERSHEY_PLAIN,3,(0,0,255),2)
-
-    # Valid ballots
-    count_str = str(nb_valid).zfill(3)
-    for j, box in enumerate(boxes_valid):
-        char = count_str[j]
-        _ = cv2.rectangle(clone, (box[0],box[1]-35), (box[0]+30,box[1]-5), (255, 0, 0), -1)
-        _ = cv2.putText(clone,char,(box[0],box[1]-5), cv2.FONT_HERSHEY_PLAIN,3,(0,0,255),2)
-
-    # Invalid ballots
-    count_str = str(nb_invalid).zfill(3)
-    for j, box in enumerate(boxes_invalid):
-        char = count_str[j]
-        _ = cv2.rectangle(clone, (box[0],box[1]-35), (box[0]+30,box[1]-5), (255, 0, 0), -1)
-        _ = cv2.putText(clone,char,(box[0],box[1]-5), cv2.FONT_HERSHEY_PLAIN,3,(0,0,255),2)
-
-    # Total ballots
-    count_str = str(nb_total).zfill(3)
-    for j, box in enumerate(boxes_total):
-        char = count_str[j]
-        _ = cv2.rectangle(clone, (box[0],box[1]-35), (box[0]+30,box[1]-5), (255, 0, 0), -1)
-        _ = cv2.putText(clone,char,(box[0],box[1]-5), cv2.FONT_HERSHEY_PLAIN,3,(0,0,255),2)
+    count_box = [(votes01,boxes01),(votes02,boxes02),(nb_valid,boxes_valid),(nb_invalid,boxes_invalid),(nb_total,boxes_total)]
+    for count, boxes in count_box:
+        count_str = str(count).zfill(3)
+        for j, box in enumerate(boxes):
+            char = count_str[j]
+            _ = cv2.rectangle(clone, (box[0],box[1]-45), (box[0]+30,box[1]-5), (0, 0, 255), -1) 
+            _ = cv2.putText(clone,char,(box[0],box[1]-10), cv2.FONT_HERSHEY_PLAIN,3,(255,255,255),2)
 
     # ## Save image
     mpimg.imsave(img_file_out,clone)
