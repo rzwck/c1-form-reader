@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 import sys
@@ -9,6 +8,68 @@ from keras.models import load_model
 import tensorflow as tf
 tf.logging.set_verbosity(tf.logging.ERROR)
 
+def order_points(pts):
+    # copyright: https://www.pyimagesearch.com/2014/08/25/4-point-opencv-getperspective-transform-example/
+
+    # initialzie a list of coordinates that will be ordered
+    # such that the first entry in the list is the top-left,
+    # the second entry is the top-right, the third is the
+    # bottom-right, and the fourth is the bottom-left
+    rect = np.zeros((4, 2), dtype = "float32")
+ 
+    # the top-left point will have the smallest sum, whereas
+    # the bottom-right point will have the largest sum
+    s = pts.sum(axis = 1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+ 
+    # now, compute the difference between the points, the
+    # top-right point will have the smallest difference,
+    # whereas the bottom-left will have the largest difference
+    diff = np.diff(pts, axis = 1)
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+ 
+    # return the ordered coordinates
+    return rect
+
+def four_point_transform(image, pts):
+    # copyright: https://www.pyimagesearch.com/2014/08/25/4-point-opencv-getperspective-transform-example/    
+
+    rect = order_points(pts)
+    (tl, tr, br, bl) = rect
+ 
+    # compute the width of the new image, which will be the
+    # maximum distance between bottom-right and bottom-left
+    # x-coordiates or the top-right and top-left x-coordinates
+    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+    maxWidth = max(int(widthA), int(widthB))
+ 
+    # compute the height of the new image, which will be the
+    # maximum distance between the top-right and bottom-right
+    # y-coordinates or the top-left and bottom-left y-coordinates
+    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+    maxHeight = max(int(heightA), int(heightB))
+ 
+    # now that we have the dimensions of the new image, construct
+    # the set of destination points to obtain a "birds eye view",
+    # (i.e. top-down view) of the image, again specifying points
+    # in the top-left, top-right, bottom-right, and bottom-left
+    # order
+    dst = np.array([
+        [0, 0],
+        [maxWidth - 1, 0],
+        [maxWidth - 1, maxHeight - 1],
+        [0, maxHeight - 1]], dtype = "float32")
+ 
+    # compute the perspective transform matrix and then apply it
+    M = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+ 
+    # return the warped image
+    return warped
 
 def read_box(window):
     window = cv2.bitwise_not(window)
@@ -50,7 +111,6 @@ def read_box(window):
 
     window = cv2.bitwise_and(window, window, mask=mask)
     window = window[max_rect[1]:max_rect[1]+max_rect[3], max_rect[0]:max_rect[0]+max_rect[2]]
-    orig_shape = window.shape
     
     desired = 56
     if window.shape[0] < 28 and window.shape[1] < 28:
@@ -65,7 +125,7 @@ def read_box(window):
 
     if window.shape != (28,28):
         window = cv2.resize(window, (28,28), interpolation=cv2.INTER_AREA)
-    return window, orig_shape
+    return window
 
 def adjust_borders(window):
     win = window.copy()
@@ -102,10 +162,10 @@ def adjust_borders(window):
 
     return (left_border,top_border,right_border,bottom_border)
 
-def get_vote_box(window, topleft_xy):
+def get_boxes(window, topleft_xy,min_vertical,min_horizontal,minLineLength,maxLineGap,min_w,min_h):
     pivot_x, pivot_y = topleft_xy
     window_edges = cv2.Canny(window, 100, 150)
-    lines = cv2.HoughLinesP(window_edges, 1, np.pi / 180, 15, np.array([]),50, 20)
+    lines = cv2.HoughLinesP(window_edges, 1, np.pi / 180, 15, np.array([]),minLineLength, maxLineGap)
 
     ys1 = []
     ys2 = []
@@ -114,7 +174,7 @@ def get_vote_box(window, topleft_xy):
         ln = line[0]
 
         # vertical lines
-        if abs(ln[0]-ln[2])<=3 and abs(ln[1]-ln[3]) >= 0.5*window_edges.shape[0]:            
+        if abs(ln[0]-ln[2])<=3 and abs(ln[1]-ln[3]) >= min_vertical:
             if ln[0] < 0.36*window_edges.shape[1]:
                 xs[0].append(ln[0])
             elif ln[0] < 0.6*window_edges.shape[1]:
@@ -125,7 +185,7 @@ def get_vote_box(window, topleft_xy):
                 xs[3].append(ln[0])
 
         # horizontal lines
-        if abs(ln[1]-ln[3])<=3 and abs(ln[0]-ln[2]) >= 0.5*window_edges.shape[1]:
+        if abs(ln[1]-ln[3])<=3 and abs(ln[0]-ln[2]) >= min_horizontal:
             if ln[1] < window_edges.shape[0]/2:
                 ys1.append(ln[1])
             else:
@@ -135,11 +195,22 @@ def get_vote_box(window, topleft_xy):
 
     boxes = [[],[],[]]
     if xs[0] and xs[1]:
-        boxes[0] = [max(xs[0]), y1, abs(min(xs[1])-max(xs[0])), abs(y2-y1)]
+        boxes[0] = [max(xs[0]), y1, abs(min(xs[1])-max(xs[0])), abs(y2-y1)]            
     if xs[1] and xs[2]:
         boxes[1] = [max(xs[1]), y1, abs(min(xs[2])-max(xs[1])), abs(y2-y1)]
     if xs[2] and xs[3]:
         boxes[2] = [max(xs[2]), y1, abs(min(xs[3])-max(xs[2])), abs(y2-y1)]
+    
+    # validate box width and height
+    for i in range(3):
+        if not boxes[i]: continue
+
+        # validate box width 
+        if boxes[i][2] < min_w-5 or boxes[i][2] > min_w+5:
+            boxes[i][2] = min_w
+        # validate box height
+        if boxes[i][3] < min_h-5 or boxes[i][3] > min_h+5:
+            boxes[i][3] = min_h
 
     if not boxes[0]:
         # missing left box
@@ -166,6 +237,12 @@ def get_vote_box(window, topleft_xy):
         elif boxes[0]:
             boxes[2] = list(boxes[0])
             boxes[2][0] = boxes[0][0] + 2*boxes[0][2]
+
+    # make sure there is no overlap between boxes horizontally
+    if boxes[0] and boxes[1] and boxes[1][0] < boxes[0][0] + boxes[0][2]:
+        boxes[1][0] = boxes[0][0] + boxes[0][2]
+    if boxes[1] and boxes[2] and boxes[2][0] < boxes[1][0] + boxes[1][2]:
+        boxes[2][0] = boxes[1][0] + boxes[1][2]
 
     # adjust boxes boundaries
     for box in boxes:
@@ -184,104 +261,15 @@ def get_vote_box(window, topleft_xy):
         box[2] = adjusted_box.shape[1]
         box[3] = adjusted_box.shape[0]
 
-    return boxes
+    return boxes    
 
-def get_ballot_box(window, topleft_xy):
-    pivot_x, pivot_y = topleft_xy
-    window_edges = cv2.Canny(window, 100, 150)
-    lines = cv2.HoughLinesP(window_edges, 1, np.pi / 180, 15, np.array([]),20, 10)
+def get_vote_box(window, topleft_xy,min_wh):
+    min_w, min_h = min_wh
+    return get_boxes(window, topleft_xy, 0.5*window.shape[0], 0.5*window.shape[1], 50, 20, min_w,min_h)
 
-    ys1 = []
-    ys2 = []
-    xs = [[],[],[],[]]
-    for line in lines:
-        ln = line[0]
-
-        # vertical lines
-        if abs(ln[0]-ln[2])<=3 and abs(ln[1]-ln[3]) >= 0.4*window_edges.shape[0]:            
-            if ln[0] < 0.36*window_edges.shape[1]:
-                xs[0].append(ln[0])
-            elif ln[0] < 0.6*window_edges.shape[1]:
-                xs[1].append(ln[0])
-            elif ln[0] < 0.83*window_edges.shape[1]:
-                xs[2].append(ln[0])
-            elif ln[0] > 0.89*window_edges.shape[1]:
-                xs[3].append(ln[0])
-
-        # horizontal lines
-        if abs(ln[1]-ln[3])<=3 and abs(ln[0]-ln[2]) >= 0.4*window_edges.shape[1]:
-            if ln[1] < window_edges.shape[0]/2:
-                ys1.append(ln[1])
-            else:
-                ys2.append(ln[1])
-
-    y1 = max(ys1)
-    y2 = min(ys2)
-
-    boxes = [[],[],[]]
-    if xs[0] and xs[1]:
-        boxes[0] = [max(xs[0]), y1, abs(min(xs[1])-max(xs[0])), abs(y2-y1)]
-    if xs[1] and xs[2]:
-        boxes[1] = [max(xs[1]), y1, abs(min(xs[2])-max(xs[1])), abs(y2-y1)]
-    if xs[2] and xs[3]:
-        boxes[2] = [max(xs[2]), y1, abs(min(xs[3])-max(xs[2])), abs(y2-y1)]
-
-    if not boxes[0]:
-        # missing left box
-        if boxes[1]:
-            boxes[0] = list(boxes[1])
-            boxes[0][0] = boxes[1][0] - boxes[1][2]
-        elif boxes[2]:
-            boxes[0] = list(boxes[2])
-            boxes[0][0] = boxes[2][0] - 2*boxes[2][2]
-    if not boxes[1]:
-        # missing middle box
-        if boxes[0]:
-            boxes[1] = list(boxes[0])
-            boxes[1][0] = boxes[0][0] + boxes[0][2]
-        elif boxes[2]:
-            boxes[1] = list(boxes[2])
-            boxes[1][0] = boxes[2][0] - boxes[2][2]
-
-    if not boxes[2]:
-        # missing right box
-        if boxes[1]:
-            boxes[2] = list(boxes[1])
-            boxes[2][0] = boxes[1][0] + boxes[1][2]
-        elif boxes[0]:
-            boxes[2] = list(boxes[0])
-            boxes[2][0] = boxes[0][0] + 2*boxes[0][2]
-            
-    for box in boxes:
-        if not box: continue
-        
-        (thresh, box_window_bw) = cv2.threshold(window, 215, 255, cv2.THRESH_BINARY)
-        box_window = box_window_bw[box[1]:box[1]+box[3], box[0]:box[0]+box[2]]   
-        box_window = cv2.bitwise_not(box_window)
-        
-        w = box_window.shape[1]
-        h = box_window.shape[0]
-        (left,top,right,bottom) = adjust_borders(box_window)
-        adjusted_box = box_window[top:h-bottom, left:w-right]
-        box[0] += pivot_x+left
-        box[1] += pivot_y+top
-        box[2] = adjusted_box.shape[1]
-        box[3] = adjusted_box.shape[0]            
-
-    return boxes
-
-def get_boxes(image_bw, box_width, box_height):
-    contours, h = cv2.findContours(image_bw,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-    wmin,wmax = box_width
-    hmin,hmax = box_height
-    digit_boxes = []
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        rects = cv2.boundingRect(cnt)
-        if rects[3] < hmin or rects[3] > hmax: continue
-        if rects[2] < wmin or rects[2] > wmax: continue
-        digit_boxes.append(rects)
-    return digit_boxes
+def get_ballot_box(window, topleft_xy,min_wh):
+    min_w, min_h = min_wh
+    return get_boxes(window, topleft_xy, 0.4*window.shape[0], 0.4*window.shape[1], 20, 10,min_w,min_h)
 
 def get_squares(image_bw, min_side, max_side):
     contours, h = cv2.findContours(image_bw,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -375,77 +363,14 @@ def find_markers(image, min_side, max_side):
             br_x = markers['bot-left'][0] + dx
             br_y = markers['bot-left'][1] + dy
             markers['bot-right']=(br_x,br_y,28,28)
-            
-        
     return markers
-
-
-# copyright: https://www.pyimagesearch.com/2014/08/25/4-point-opencv-getperspective-transform-example/
-def order_points(pts):
-    # initialzie a list of coordinates that will be ordered
-    # such that the first entry in the list is the top-left,
-    # the second entry is the top-right, the third is the
-    # bottom-right, and the fourth is the bottom-left
-    rect = np.zeros((4, 2), dtype = "float32")
- 
-    # the top-left point will have the smallest sum, whereas
-    # the bottom-right point will have the largest sum
-    s = pts.sum(axis = 1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
- 
-    # now, compute the difference between the points, the
-    # top-right point will have the smallest difference,
-    # whereas the bottom-left will have the largest difference
-    diff = np.diff(pts, axis = 1)
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
- 
-    # return the ordered coordinates
-    return rect
-
-def four_point_transform(image, pts):
-    rect = order_points(pts)
-    (tl, tr, br, bl) = rect
- 
-    # compute the width of the new image, which will be the
-    # maximum distance between bottom-right and bottom-left
-    # x-coordiates or the top-right and top-left x-coordinates
-    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-    maxWidth = max(int(widthA), int(widthB))
- 
-    # compute the height of the new image, which will be the
-    # maximum distance between the top-right and bottom-right
-    # y-coordinates or the top-left and bottom-left y-coordinates
-    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
-    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
-    maxHeight = max(int(heightA), int(heightB))
- 
-    # now that we have the dimensions of the new image, construct
-    # the set of destination points to obtain a "birds eye view",
-    # (i.e. top-down view) of the image, again specifying points
-    # in the top-left, top-right, bottom-right, and bottom-left
-    # order
-    dst = np.array([
-        [0, 0],
-        [maxWidth - 1, 0],
-        [maxWidth - 1, maxHeight - 1],
-        [0, maxHeight - 1]], dtype = "float32")
- 
-    # compute the perspective transform matrix and then apply it
-    M = cv2.getPerspectiveTransform(rect, dst)
-    warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
- 
-    # return the warped image
-    return warped
 
 def scan_boxes(boxes, boxes_window_bw):
     count_str = ''
     confidence = True
     for box in boxes:
         window = boxes_window_bw[box[1]:box[1]+box[3], box[0]:box[0]+box[2]]        
-        window, orig_shape = read_box(window)
+        window = read_box(window)
         if window.sum() < 10:
             char = '0'
             count_str += '0'
@@ -466,6 +391,12 @@ def scan_boxes(boxes, boxes_window_bw):
                     confidence = False
                 char = str(pred)
         count_str += char
+
+    if count_str[2] == 'X':
+        count_str = 'XXX'
+    elif count_str[1] == 'X':
+        count_str = 'X' + count_str[1:]
+
     return count_str, confidence
 
 def scan_form(img_file, img_file_out):
@@ -485,73 +416,55 @@ def scan_form(img_file, img_file_out):
     form_height = trans_img.shape[0]
     form_width = trans_img.shape[1]
 
-    # ### Get votes digit areas
+    # ### Get votes boxes
     pivot_x, pivot_y = round(form_width*0.8),round(form_height*0.14)
     window = trans_img_grayed[pivot_y:round(form_height*0.29),pivot_x:]
-
+    min_w = round(form_width*0.04)
+    min_h = round(form_height*0.05)
+    
     # Candidate #01
     win01 = window[:window.shape[0]//2,:]
-    boxes01 = get_vote_box(win01, (pivot_x,pivot_y))
+    boxes01 = get_vote_box(win01, (pivot_x,pivot_y), (min_w,min_h))
     if not all(boxes01): raise Exception("Unable to read form: %s" % img_file)
 
     # Candidate #02
     win02 = window[window.shape[0]//2:,:]
-    boxes02 = get_vote_box(win02, (pivot_x,pivot_y+window.shape[0]//2))
+    boxes02 = get_vote_box(win02, (pivot_x,pivot_y+window.shape[0]//2),(min_w,min_h))
     if not all(boxes02): raise Exception("Unable to read form: %s" % img_file)
 
-    # ### Get ballots digit areas
+    # ### Get ballots boxes
     pivot_x, pivot_y = round(form_width*0.8),round(form_height*0.37)
     window = trans_img_grayed[pivot_y:round(form_height*0.55),pivot_x:]
+    min_w = round(form_width*0.041)
+    min_h = round(form_height*0.025)
 
     win_valid = window[:round(0.23*window.shape[0]),:]
     win_invalid = window[round(0.37*window.shape[0]):round(0.65*window.shape[0]),:]
     win_total = window[round(0.78*window.shape[0]):,:]
 
-    boxes_valid = get_ballot_box(win_valid,(pivot_x, pivot_y))
+    boxes_valid = get_ballot_box(win_valid,(pivot_x, pivot_y),(min_w,min_h))
     if not all(boxes_valid): raise Exception("Unable to read form: %s" % img_file)
 
-    boxes_invalid = get_ballot_box(win_invalid,(pivot_x, round(0.37*window.shape[0])+pivot_y))
+    boxes_invalid = get_ballot_box(win_invalid,(pivot_x, round(0.37*window.shape[0])+pivot_y),(min_w,min_h))
     if not all(boxes_invalid): raise Exception("Unable to read form: %s" % img_file)
 
-    boxes_total = get_ballot_box(win_total,(pivot_x, round(0.78*window.shape[0])+pivot_y))
+    boxes_total = get_ballot_box(win_total,(pivot_x, round(0.78*window.shape[0])+pivot_y),(min_w,min_h))
     if not all(boxes_total): raise Exception("Unable to read form: %s" % img_file)
 
-    # ### Read vote counts
-    confidence = {'votes01':True,
-                  'votes02':True,
-                  'valid_ballots':True,
-                  'invalid_ballots':True,
-                  'total_ballots':True}
+    # ### Read hand written digits
+    confidence = {'votes01':True,'votes02':True,'valid_ballots':True,'invalid_ballots':True,'total_ballots':True}
     validity = {k:False for k in confidence}
 
     clone = trans_img.copy()
     clone_grayed = cv2.cvtColor(clone, cv2.COLOR_RGB2GRAY)
     (thresh, clone_bw) = cv2.threshold(clone_grayed, 215, 255, cv2.THRESH_BINARY)
 
-    # ### Votes 01
+
     suara01, confidence['votes01'] = scan_boxes(boxes01, clone_bw)
-    if suara01[0] != 'X' and suara01[1] == 'X':
-        confidence['votes01'] = False
-
-    # ### Votes 02
     suara02, confidence['votes02']= scan_boxes(boxes02, clone_bw)
-    if suara02[0]!='X' and suara02[1] == 'X':
-        confidence['votes02'] = False
-
-    # ## Valid ballots
     suara_sah,confidence['valid_ballots'] = scan_boxes(boxes_valid, clone_bw)
-    if suara_sah[0]!='X' and suara_sah[1] == 'X':
-        confidence['valid_ballots'] = False
-
-    # ## Invalid ballots
     suara_tidak_sah,confidence['invalid_ballots']  = scan_boxes(boxes_invalid, clone_bw)
-    if suara_tidak_sah[0]!='X' and suara_tidak_sah[1] == 'X':
-        confidence['invalid_ballots'] = False
-
-    # ## Total ballots
     total_suara,confidence['total_ballots'] = scan_boxes(boxes_total, clone_bw)
-    if total_suara[0]!='X' and total_suara[1] == 'X':
-        confidence['total_ballots'] = False
 
     # ## Validation and correction
     try:
@@ -561,7 +474,7 @@ def scan_form(img_file, img_file_out):
         nb_invalid = int(suara_tidak_sah.replace('X','0'))
         nb_total = int(total_suara.replace('X','0'))        
     except:
-        raise Exception("Unable to read form")
+        raise Exception("Unable to read form: %s" % img_file)
 
     if nb_valid == votes01 + votes02:
         validity['votes01'] = True
@@ -652,16 +565,15 @@ def scan_form(img_file, img_file_out):
 
 if __name__ == "__main__":
     # ### Load Classifiers
-    model = load_model('digits_recognizer.h5')
-    model_digits = load_model('mnist_classifier.h5')
-    model_hyphen = load_model('hyphen_classifier.h5')
-    modelX = load_model('X_classifier.h5')
+    model = load_model('classifiers/digits_recognizer.h5')
+    model_digits = load_model('classifiers/mnist_classifier.h5')
+    model_hyphen = load_model('classifiers/hyphen_classifier.h5')
+    modelX = load_model('classifiers/X_classifier.h5')
 
-    files = ["test5", "test6", "test9", "test10", "test11","test12","test13","test14"]
+    files = ["test1","test2","test3","test4","test5", "test6","test7","test8","test9", "test10", "test11","test12","test13","test14"]
     for file in files:
         try:
-            results = scan_form("%s.jpg" % file, "%s_out.jpg" % file)
+            results = scan_form("test_images/%s.jpg" % file, "test_images/%s_out.jpg" % file)
             print(file, results)
         except Exception as e:
             print(e)
-
