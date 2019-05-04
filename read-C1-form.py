@@ -1,12 +1,11 @@
-import matplotlib.image as mpimg
-import numpy as np
-import sys
-import cv2
-import warnings
-warnings.filterwarnings("ignore")
-from keras.models import load_model
 import tensorflow as tf
 tf.logging.set_verbosity(tf.logging.ERROR)
+import warnings
+warnings.filterwarnings("ignore")
+import matplotlib.image as mpimg
+import numpy as np
+import cv2
+from keras.models import load_model
 
 def order_points(pts):
     # copyright: https://www.pyimagesearch.com/2014/08/25/4-point-opencv-getperspective-transform-example/
@@ -536,6 +535,7 @@ def scan_form(img_file, img_file_out):
 
     return (votes01, votes02, nb_valid, nb_invalid, nb_total)
 
+import glob, os
 
 if __name__ == "__main__":
     # ### Load Classifiers
@@ -543,11 +543,13 @@ if __name__ == "__main__":
     model_digits = load_model('classifiers/mnist_classifier.h5')
     model_hyphen = load_model('classifiers/hyphen_classifier.h5')
     modelX = load_model('classifiers/X_classifier.h5')
-
-    files = ["test1","test2","test3","test4","test5", "test6","test7","test8","test9", "test10", "test11","test12","test13","test14"]
+    
+    files = glob.glob('test_images/test*.jpg')
     for file in files:
+        if '_out' in file: continue
+        nameonly = os.path.splitext(file)[0]
         try:
-            results = scan_form("test_images/%s.jpg" % file, "test_images/%s_out.jpg" % file)
+            results = scan_form("%s.jpg" % nameonly, "%s_out.jpg" % nameonly)
             print(file, results)
         except Exception as e:
             print(e)
