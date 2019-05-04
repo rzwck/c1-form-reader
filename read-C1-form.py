@@ -71,15 +71,16 @@ def four_point_transform(image, pts):
     return warped
 
 def read_box(window):
+    window = window.copy()
     window = cv2.bitwise_not(window)
     
     lineThickness = 1
-    window = cv2.line(window, (0,0), (window.shape[1],0),1, lineThickness)
-    window = cv2.line(window, (0,0), (0,window.shape[0]),1, lineThickness)
-    window = cv2.line(window, (window.shape[1],0), (window.shape[1],window.shape[0]),1, lineThickness)
-    window = cv2.line(window, (0,window.shape[0]), (window.shape[1],window.shape[0]),1, lineThickness)
-    
-    contours, h = cv2.findContours(window,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    window = cv2.line(window, (0,0), (window.shape[1]-1,0),1, lineThickness)
+    window = cv2.line(window, (0,0), (0,window.shape[0]-1),1, lineThickness)
+    window = cv2.line(window, (window.shape[1]-1,0), (window.shape[1]-1,window.shape[0]-1),1, lineThickness)
+    window = cv2.line(window, (0,window.shape[0]-1), (window.shape[1]-1,window.shape[0]-1),1, lineThickness)
+
+    contours, h = cv2.findContours(window.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     full_area = window.shape[0] * window.shape[1]
     min_x = window.shape[1]
     min_y = window.shape[0]
@@ -458,11 +459,11 @@ def scan_form(img_file, img_file_out):
     clone_grayed = cv2.cvtColor(clone, cv2.COLOR_RGB2GRAY)
     (thresh, clone_bw) = cv2.threshold(clone_grayed, 215, 255, cv2.THRESH_BINARY)
 
-    suara01, confidence['votes01'], digits_01 = scan_boxes(boxes01, clone_bw)
-    suara02, confidence['votes02'], digits_02 = scan_boxes(boxes02, clone_bw)
-    suara_sah,confidence['valid_ballots'], digits_valid = scan_boxes(boxes_valid, clone_bw)
-    suara_tidak_sah,confidence['invalid_ballots'], digits_invalid  = scan_boxes(boxes_invalid, clone_bw)
-    total_suara,confidence['total_ballots'], digits_total = scan_boxes(boxes_total, clone_bw)
+    suara01, confidence['votes01'], digits_01 = scan_boxes(boxes01, clone_bw.copy())
+    suara02, confidence['votes02'], digits_02 = scan_boxes(boxes02, clone_bw.copy())
+    suara_sah,confidence['valid_ballots'], digits_valid = scan_boxes(boxes_valid, clone_bw.copy())
+    suara_tidak_sah,confidence['invalid_ballots'], digits_invalid  = scan_boxes(boxes_invalid, clone_bw.copy())
+    total_suara,confidence['total_ballots'], digits_total = scan_boxes(boxes_total, clone_bw.copy())
 
     # ## Validation and correction
     try:
@@ -552,4 +553,4 @@ if __name__ == "__main__":
             results = scan_form("%s.jpg" % nameonly, "%s_out.jpg" % nameonly)
             print(file, results)
         except Exception as e:
-            print(e)
+            print("Form %s unreadable" % file)
