@@ -135,6 +135,7 @@ def get_boxes(window, topleft_xy,min_vertical,min_horizontal,minLineLength,maxLi
     ys1 = []
     ys2 = []
     xs = [[],[],[],[]]
+    boxes = [[],[],[]]
     for line in lines:
         ln = line[0]
 
@@ -155,10 +156,11 @@ def get_boxes(window, topleft_xy,min_vertical,min_horizontal,minLineLength,maxLi
                 ys1.append(ln[1])
             else:
                 ys2.append(ln[1])
+    if not ys1 or not ys2:
+        return boxes
     y1 = max(ys1)
     y2 = min(ys2)
 
-    boxes = [[],[],[]]
     if xs[0] and xs[1]:
         boxes[0] = [max(xs[0]), y1, abs(min(xs[1])-max(xs[0])), abs(y2-y1)]            
     if xs[1] and xs[2]:
@@ -278,6 +280,7 @@ def find_markers(image, min_side, max_side):
     # top-left marker
     pivot_x,pivot_y = (0,0)
     window = image_grayed[pivot_y:marker_h,pivot_x:marker_w]
+    window = cv2.copyMakeBorder(window,1,1,1,1,cv2.BORDER_CONSTANT,value=255)
     box = get_marker_box(window, min_side,max_side)
     if box:
         markers['top-left'] = (pivot_x+box[0],pivot_y+box[1],box[2],box[3])
@@ -285,6 +288,7 @@ def find_markers(image, min_side, max_side):
     # bot-left marker
     pivot_x,pivot_y = 0, h-marker_h
     window = image_grayed[pivot_y:,pivot_x:marker_w]
+    window = cv2.copyMakeBorder(window,1,1,1,1,cv2.BORDER_CONSTANT,value=255)
     box = get_marker_box(window, min_side,max_side)
     if box:
         markers['bot-left'] = (pivot_x+box[0],pivot_y+box[1],box[2],box[3])
@@ -292,6 +296,7 @@ def find_markers(image, min_side, max_side):
     # top-right marker
     pivot_x,pivot_y = (w-marker_w,0)
     window = image_grayed[pivot_y:marker_h,pivot_x:]
+    window = cv2.copyMakeBorder(window,1,1,1,1,cv2.BORDER_CONSTANT,value=255)
     box = get_marker_box(window, min_side,max_side)
     if box:
         markers['top-right'] = (pivot_x+box[0],pivot_y+box[1],box[2],box[3])
@@ -299,6 +304,7 @@ def find_markers(image, min_side, max_side):
     # bot-right marker
     pivot_x,pivot_y = (w-marker_w,h-marker_h)
     window = image_grayed[pivot_y:,pivot_x:]
+    window = cv2.copyMakeBorder(window,1,1,1,1,cv2.BORDER_CONSTANT,value=255)
     box = get_marker_box(window, min_side,max_side)
     if box:
         markers['bot-right'] = (pivot_x+box[0],pivot_y+box[1],box[2],box[3])        
@@ -372,7 +378,7 @@ def scan_form(img_file, img_file_out):
 
     # ### Find 4 box markers
     markers = find_markers(image, min_side=20, max_side=50)
-    if len(markers) != 4: raise Exception("Unable to read form: %s" % img_file)
+    if len(markers) != 4: raise Exception("Unable find corner markers")
 
     # ## Perspective Transform based on Markers
     pts = [markers[x][:2] for x in markers]
@@ -391,11 +397,11 @@ def scan_form(img_file, img_file_out):
     
     win01 = window[:window.shape[0]//2,:]
     boxes01 = get_vote_box(win01, (pivot_x,pivot_y), (min_w,min_h))
-    if not all(boxes01): raise Exception("Unable to read form: %s" % img_file)
+    if not all(boxes01): raise Exception("Unable to find digit positions for votes #01")
 
     win02 = window[window.shape[0]//2:,:]
     boxes02 = get_vote_box(win02, (pivot_x,pivot_y+window.shape[0]//2),(min_w,min_h))
-    if not all(boxes02): raise Exception("Unable to read form: %s" % img_file)
+    if not all(boxes02): raise Exception("Unable to find digit positions for votes #02")
 
     # ### Get ballots boxes
     pivot_x, pivot_y = round(form_width*0.8),round(form_height*0.37)
@@ -408,13 +414,13 @@ def scan_form(img_file, img_file_out):
     win_total = window[round(0.78*window.shape[0]):,:]
 
     boxes_valid = get_ballot_box(win_valid,(pivot_x, pivot_y),(min_w,min_h))
-    if not all(boxes_valid): raise Exception("Unable to read form: %s" % img_file)
+    if not all(boxes_valid): raise Exception("Unable to find digit positions for valid ballots count")
 
     boxes_invalid = get_ballot_box(win_invalid,(pivot_x, round(0.37*window.shape[0])+pivot_y),(min_w,min_h))
-    if not all(boxes_invalid): raise Exception("Unable to read form: %s" % img_file)
+    if not all(boxes_invalid): raise Exception("Unable to find digit positions for invalid ballots count")
 
     boxes_total = get_ballot_box(win_total,(pivot_x, round(0.78*window.shape[0])+pivot_y),(min_w,min_h))
-    if not all(boxes_total): raise Exception("Unable to read form: %s" % img_file)
+    if not all(boxes_total): raise Exception("Unable to find digits for total ballots count")
 
     # ### Read hand written digits
     confidence = {'votes01':True,'votes02':True,'valid_ballots':True,'invalid_ballots':True,'total_ballots':True}
@@ -499,7 +505,11 @@ def scan_form(img_file, img_file_out):
     # ## Save image
     mpimg.imsave(img_file_out,clone)
 
-    return (votes01, votes02, nb_valid, nb_invalid, nb_total)
+    return {"01": votes01,
+        "02":votes02,
+        "valid":nb_valid,
+        "invalid":nb_invalid,
+        "total":nb_total}
 
 import glob, os
 
@@ -518,4 +528,4 @@ if __name__ == "__main__":
             results = scan_form("%s.jpg" % nameonly, "%s_out.jpg" % nameonly)
             print(file, results)
         except Exception as e:
-            print("Form %s unreadable" % file)
+            print("Form %s is unreadable: %s" % (file, e))
