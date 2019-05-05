@@ -2,10 +2,6 @@
 
 Application of computer vision and convolutional neural network (CNN) for automatically reading hand written numbers on C1 form (Indonesia election's tally form).
 
-## Getting Started
-
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
-
 ### Prerequisites
 
 You need to have python 3.x and the following libraries must be installed to run c1 form reader:
@@ -43,22 +39,32 @@ From the c1-form-reader you can just run the script as the following example:
 ```
 (c1reader) $ python read-C1-form.py
 Using TensorFlow backend.
-test_images/test1.jpg (12, 115, 127, 0, 120)
-test_images/test10.jpg (136, 11, 147, 6, 153)
-Form test_images/test11.jpg unreadable
-test_images/test12.jpg (190, 15, 205, 4, 209)
-test_images/test13.jpg (44, 61, 109, 0, 150)
-Form test_images/test14.jpg unreadable
-test_images/test15.jpg (119, 19, 138, 0, 138)
-Form test_images/test16.jpg unreadable
-test_images/test2.jpg (125, 57, 182, 3, 185)
-Form test_images/test3.jpg unreadable
-test_images/test4.jpg (128, 28, 156, 5, 161)
-test_images/test5.jpg (121, 3, 124, 5, 129)
-test_images/test6.jpg (142, 82, 224, 3, 227)
-Form test_images/test7.jpg unreadable
-Form test_images/test8.jpg unreadable
-test_images/test9.jpg (139, 7, 146, 0, 146)
+2019-05-05 11:19:51.089820: I tensorflow/core/platform/cpu_feature_guard.cc:141] Your CPU supports instructions that this TensorFlow binary was not compiled to use: AVX2 FMA
+test_images/test1.jpg {'01': 12, '02': 115, 'valid': 122, 'invalid': 0, 'total': 127}
+test_images/test10.jpg {'01': 136, '02': 11, 'valid': 147, 'invalid': 6, 'total': 153}
+Form test_images/test11.jpg is unreadable: Unable to find digit positions for invalid ballots count
+test_images/test12.jpg {'01': 190, '02': 415, 'valid': 205, 'invalid': 4, 'total': 209}
+test_images/test13.jpg {'01': 44, '02': 61, 'valid': 109, 'invalid': 0, 'total': 150}
+Form test_images/test14.jpg is unreadable: Unable to find digit positions for valid ballots count
+test_images/test15.jpg {'01': 119, '02': 19, 'valid': 138, 'invalid': 0, 'total': 138}
+Form test_images/test16.jpg is unreadable: Unable to find digit positions for votes #01
+test_images/test17.jpg {'01': 69, '02': 160, 'valid': 229, 'invalid': 7, 'total': 231}
+Form test_images/test18.jpg is unreadable: Unable to find digit positions for invalid ballots count
+Form test_images/test19.jpg is unreadable: Unable to find digit positions for votes #02
+test_images/test2.jpg {'01': 125, '02': 57, 'valid': 182, 'invalid': 3, 'total': 185}
+Form test_images/test20.jpg is unreadable: Unable to find digits for total ballots count
+test_images/test21.jpg {'01': 72, '02': 164, 'valid': 236, 'invalid': 4, 'total': 240}
+test_images/test22.jpg {'01': 116, '02': 24, 'valid': 140, 'invalid': 3, 'total': 143}
+test_images/test23.jpg {'01': 59, '02': 150, 'valid': 209, 'invalid': 1, 'total': 210}
+test_images/test24.jpg {'01': 89, '02': 133, 'valid': 223, 'invalid': 5, 'total': 228}
+Form test_images/test25.jpg is unreadable: Unable to find digit positions for valid ballots count
+Form test_images/test3.jpg is unreadable: Unable to find digit positions for votes #01
+test_images/test4.jpg {'01': 128, '02': 28, 'valid': 156, 'invalid': 5, 'total': 161}
+test_images/test5.jpg {'01': 121, '02': 3, 'valid': 124, 'invalid': 5, 'total': 129}
+Form test_images/test6.jpg is unreadable: Unable to find digit positions for votes #02
+Form test_images/test7.jpg is unreadable: Unable to find digit positions for votes #02
+test_images/test8.jpg {'01': 143, '02': 89, 'valid': 232, 'invalid': 7, 'total': 239}
+test_images/test9.jpg {'01': 139, '02': 7, 'valid': 146, 'invalid': 0, 'total': 146}
 ```
 
 The script saves the output file on the same folder (test_images). The following screenshot shows some of the outputs produced by c1 form reader.
