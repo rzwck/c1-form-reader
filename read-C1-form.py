@@ -14,6 +14,30 @@ def read_box(window):
 
     # image is now white over black background
     window = cv2.bitwise_not(window)
+
+    h = window.shape[0]
+    w = window.shape[1]
+    # clean left borders
+    for i in range(5):
+        filled = sum(window[:,i:i+1]!=0) / h
+        if filled > 0.45:
+            window = cv2.line(window, (i,0), (i,h),0,1)
+    # clean top borders
+    for i in range(5):
+        filled = (window[i:i+1,:]!=0).sum() / w
+        if filled > 0.45:
+            window = cv2.line(window, (0,i), (w,i),0,1)
+    # clean right borders
+    for i in range(5):
+        filled = sum(window[:,w-i-1:w-i]!=0) / h
+        if filled > 0.45:
+            window = cv2.line(window,(w-1-i,0),(w-1-i,h),0,1)
+        
+    # clean bottom borders
+    for i in range(5):
+        filled = (window[h-i-1:h-i,:]!=0).sum() / w
+        if filled > 0.45:
+            window = cv2.line(window, (0,h-i-1), (w,h-i-1),0,1)        
     
     lineThickness = 1
     window = cv2.line(window, (0,0), (window.shape[1],0),0, lineThickness)
