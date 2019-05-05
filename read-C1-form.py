@@ -9,14 +9,17 @@ from pyimagesearch import *
 from keras.models import load_model
 
 def read_box(window):
+    # input image is black over white background
     window = window.copy()
+
+    # image is now white over black background
     window = cv2.bitwise_not(window)
     
     lineThickness = 1
-    window = cv2.line(window, (0,0), (window.shape[1]-1,0),1, lineThickness)
-    window = cv2.line(window, (0,0), (0,window.shape[0]-1),1, lineThickness)
-    window = cv2.line(window, (window.shape[1]-1,0), (window.shape[1]-1,window.shape[0]-1),1, lineThickness)
-    window = cv2.line(window, (0,window.shape[0]-1), (window.shape[1]-1,window.shape[0]-1),1, lineThickness)
+    window = cv2.line(window, (0,0), (window.shape[1],0),0, lineThickness)
+    window = cv2.line(window, (0,0), (0,window.shape[0]),0, lineThickness)
+    window = cv2.line(window, (window.shape[1]-1,0), (window.shape[1]-1,window.shape[0]),0, lineThickness)
+    window = cv2.line(window, (0,window.shape[0]-1), (window.shape[1],window.shape[0]-1),0, lineThickness)
 
     contours, h = cv2.findContours(window.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     full_area = window.shape[0] * window.shape[1]
@@ -325,8 +328,8 @@ def scan_boxes(boxes, boxes_window_bw):
             if pred[0] == 1:
                 char = 'X'
             else:
-                pred = model_digits.predict_classes(window)[0]
-                pred2 = model.predict_classes(window)[0]
+                pred = model_mnist.predict_classes(window)[0]
+                pred2 = model_dki17.predict_classes(window)[0]
                 if pred != pred2:
                     confidence = False
                 char = str(pred)
@@ -478,8 +481,8 @@ import glob, os
 
 if __name__ == "__main__":
     # ### Load Classifiers
-    model = load_model('classifiers/digits_recognizer.h5')
-    model_digits = load_model('classifiers/mnist_classifier.h5')
+    model_dki17 = load_model('classifiers/digits_recognizer.h5')
+    model_mnist = load_model('classifiers/mnist_classifier.h5')
     model_hyphen = load_model('classifiers/hyphen_classifier.h5')
     modelX = load_model('classifiers/X_classifier.h5')
     
